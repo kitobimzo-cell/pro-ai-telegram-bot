@@ -29,7 +29,6 @@ GREETING_WORDS = [
     "privet", "привет", "assalomu alaykum", "ассалому алайкум"
 ]
 
-# Botning nomi
 BOT_NAME = "alsafi"
 
 if bot:
@@ -38,15 +37,21 @@ if bot:
     except Exception as e:
         print(f"Webhook error: {e}")
 
+    # /start va /help uchun dinamik va har xil samimiy javob
     @bot.message_handler(commands=['start', 'help'])
     def send_welcome(message):
         user_name = message.from_user.first_name or "Foydalanuvchi"
-        database.save_user(message.chat.id, message.from_user.id, message.from_user.username, user_name)
-        bot.reply_to(
-            message, 
-            f"Salom, {user_name}! 😊\nMen **Alsafi** - guruh va shaxsiy chatlar uchun sun'iy intellekt yordamchisiman.\n\n"
-            "💬 Menga savol bering yoki rasm yuboring!"
+        user_id = message.from_user.id
+        database.save_user(message.chat.id, user_id, message.from_user.username, user_name)
+        
+        bot.send_chat_action(message.chat.id, 'typing')
+        prompt = (
+            f"Foydalanuvchi '{user_name}' botga /start bosdi. Unga ismini aytib, "
+            f"juda qisqa (1-2 juft so'z), har safar har xil va samimiy, chiroyli smaylik bilan "
+            f"salom bering. Hech qanday uzun shablon yoki takliflar ishlatmang."
         )
+        welcome_text = ai_engine.generate_ai_response(message.chat.id, user_id, user_name, prompt)
+        bot.reply_to(message, welcome_text)
 
     # Rasmlar bilan ishlash
     @bot.message_handler(content_types=['photo'])
@@ -97,7 +102,7 @@ if bot:
             bot_info = bot.get_me()
             is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot_info.id
             is_mentioned = f"@{bot_info.username}" in message.text
-            is_named = BOT_NAME in text_lower  # "Alsafi" ismi yozilganligini tekshirish
+            is_named = BOT_NAME in text_lower
             
             # Guruhda oddiy salomlashuv bo'lsa
             if is_greeting and not (is_reply_to_bot or is_mentioned or is_named):
@@ -107,7 +112,6 @@ if bot:
                 bot.reply_to(message, reply_text)
                 return
 
-            # Agar reply qilinmagan, @mention qilinmagan va "Alsafi" deb ham yozilmagan bo'lsa — e'tiborsiz qoldirish
             if not (is_reply_to_bot or is_mentioned or is_named):
                 return
 
