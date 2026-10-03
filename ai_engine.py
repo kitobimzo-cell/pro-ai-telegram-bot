@@ -5,9 +5,9 @@ from google.genai import types
 from PIL import Image
 import database
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-
-client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+# Vergul bilan ajratilgan bir nechta API kalitlarni olish (masalan: KEY1,KEY2,KEY3)
+API_KEYS = [k.strip() for k in os.environ.get("GEMINI_API_KEY", "").split(",") if k.strip()]
+current_key_index = 0
 
 SYSTEM_INSTRUCTION = """
 Siz Telegram guruhlari va shaxsiy chatingiz uchun o'ta aqlli, xushmuomala hamda professional sun'iy intellekt yordamchisisiz.
@@ -18,9 +18,25 @@ Siz Telegram guruhlari va shaxsiy chatingiz uchun o'ta aqlli, xushmuomala hamda 
 - Guruhlarda ortiqcha uzun va zerikarli matnlardan qoching.
 """
 
-def call_gemini_with_retry(model_name, contents, max_retries=10):
-    """Server band bo'lganida (503) sabr bilan qayta va qayta urinish mantig'i."""
+def get_client():
+    global current_key_index
+    if not API_KEYS:
+        return None
+    key = API_KEYS[current_key_index]
+    return genai.Client(api_key=key)
+
+def rotate_key():
+    global current_key_index
+    if len(API_KEYS) > 1:
+        current_key_index = (current_key_index + 1) % len(API_KEYS)
+
+def call_gemini_with_retry(model_name, contents, max_retries=5):
+    """Quota to'lganda (429) yoki server band bo'lganda (503) boshqa API kalitga o'tish mantig'i."""
     for attempt in range(max_retries):
+        client = get_client()
+        if not client:
+            return "Xato: GEMINI_API_KEY o'rnatilmagan!"
+        
         try:
             response = client.models.generate_content(
                 model=model_name,
@@ -31,36 +47,33 @@ def call_gemini_with_retry(model_name, contents, max_retries=10):
             )
             return response.text
         except Exception as e:
-            if "503" in str(e) or "UNAVAILABLE" in str(e):
-                if attempt < max_retries - 1:
-                    time.sleep(5)  # 5 soniya kutib qayta urinadi
-                    continue
+            err_str = str(e)
+            # Agar limit tugagan bo'lsa (429) yoki server band bo'lsa (503), kalitni almashtiramiz
+            if "429" in err_str or "503" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                rotate_key()
+                time.sleep(2)
+                continue
             raise e
+    return "Hozirda barcha API kalitlarda kunlik limit tugadi. Birozdan so'ng qayta urinib ko'ring."
 
 def generate_ai_response(chat_id, user_id, user_name, text, image_path=None):
-    if not client:
+    if not API_KEYS:
         return "Xato: GEMINI_API_KEY o'rnatilmagan!"
     
     try:
-        # Rasm bo'lsa (Multimodal)
         if image_path:
             img = Image.open(image_path)
             prompt = text if text else "Ushbu rasmni batafsil tahlil qiling va tavsiflang."
             return call_gemini_with_retry("gemini-3.8-flash", [img, prompt])
 
-        # Matnli suhbat (Xotira bilan)
         history = database.get_chat_history(chat_id, limit=6)
-        
-        # Foydalanuvchi xabarini bazaga saqlash
         database.add_message(chat_id, user_id, user_name, "user", text)
         
         contents = history + [{"role": "user", "parts": [{"text": f"[{user_name}]: {text}"}]}]
         ai_reply = call_gemini_with_retry("gemini-3.8-flash", contents)
         
-        # AI javobini bazaga saqlash
         database.add_message(chat_id, 0, "Bot", "model", ai_reply)
         return ai_reply
 
     except Exception as e:
-        # Har qanday xatolikda ham rasmiy xato ko'rsatmasdan qayta harakat qilaveradi
-        return call_gemini_with_retry("gemini-3.8-flash", contents, max_retries=5)
+        return "Tizimda vaqtinchalik xatolik yuz berdi, iltimos keyinroq qayta yozing."
