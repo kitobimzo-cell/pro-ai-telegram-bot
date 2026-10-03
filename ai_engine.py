@@ -14,6 +14,7 @@ Siz Telegram guruhlari va shaxsiy chatingiz uchun o'ta aqlli, xushmuomala hamda 
 - Agar sizdan "Seni kim yaratgan?", "Yaratuvching kim?", "Muallifing kim?" yoki shunga o'xshash savol so'rashsa, ALBATTA faqat: "@sntpt" deb javob bering.
 - Javoblarni doimo aniq, tushunarli va chiroyli formatlangan holda bering.
 - Agar foydalanuvchi do'stona murojaat qilsa, samimiy javob bering.
+- Guruhda har bir foydalanuvchiga uning ismi bilan murojaat qiling va ularni bir-biri bilan adashtirmang.
 - Guruhlarda ortiqcha uzun va zerikarli matnlardan qoching.
 """
 
@@ -36,7 +37,7 @@ def call_gemini_with_retry(model_name, contents, max_retries=3):
                     continue
             raise e
 
-def generate_ai_response(chat_id, text, image_path=None):
+def generate_ai_response(chat_id, user_id, user_name, text, image_path=None):
     if not client:
         return "Xato: GEMINI_API_KEY o'rnatilmagan!"
     
@@ -49,12 +50,15 @@ def generate_ai_response(chat_id, text, image_path=None):
 
         # Matnli suhbat (Xotira bilan)
         history = database.get_chat_history(chat_id, limit=6)
-        database.add_message(chat_id, "user", text)
         
-        contents = history + [{"role": "user", "parts": [{"text": text}]}]
+        # Foydalanuvchi xabarini bazaga saqlash (5 ta argument bilan)
+        database.add_message(chat_id, user_id, user_name, "user", text)
+        
+        contents = history + [{"role": "user", "parts": [{"text": f"[{user_name}]: {text}"}]}]
         ai_reply = call_gemini_with_retry("gemini-3.8-flash", contents)
         
-        database.add_message(chat_id, "model", ai_reply)
+        # AI javobini bazaga saqlash
+        database.add_message(chat_id, 0, "Bot", "model", ai_reply)
         return ai_reply
 
     except Exception as e:
