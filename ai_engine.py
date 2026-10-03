@@ -20,12 +20,12 @@ def generate_ai_response(chat_id, text, image_path=None):
         return "Xato: GEMINI_API_KEY o'rnatilmagan!"
     
     try:
-        # Rasm tahlili (Multimodal)
+        # Rasm bo'lsa (Multimodal)
         if image_path:
             img = Image.open(image_path)
             prompt = text if text else "Ushbu rasmni batafsil tahlil qiling va tavsiflang."
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-3.8-flash",
                 contents=[img, prompt],
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_INSTRUCTION
@@ -35,10 +35,13 @@ def generate_ai_response(chat_id, text, image_path=None):
 
         # Matnli suhbat (Xotira bilan)
         history = database.get_chat_history(chat_id, limit=6)
+        
+        # Yangi xabarni tarixga qo'shish
         database.add_message(chat_id, "user", text)
         
+        # AI javobini olish
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-3.8-flash",
             contents=history + [{"role": "user", "parts": [{"text": text}]}],
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_INSTRUCTION
