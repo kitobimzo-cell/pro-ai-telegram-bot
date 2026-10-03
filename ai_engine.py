@@ -18,8 +18,8 @@ Siz Telegram guruhlari va shaxsiy chatingiz uchun o'ta aqlli, xushmuomala hamda 
 - Guruhlarda ortiqcha uzun va zerikarli matnlardan qoching.
 """
 
-def call_gemini_with_retry(model_name, contents, max_retries=3):
-    """Server band bo'lganida (503) qayta urinish mantig'i."""
+def call_gemini_with_retry(model_name, contents, max_retries=10):
+    """Server band bo'lganida (503) sabr bilan qayta va qayta urinish mantig'i."""
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
@@ -33,7 +33,7 @@ def call_gemini_with_retry(model_name, contents, max_retries=3):
         except Exception as e:
             if "503" in str(e) or "UNAVAILABLE" in str(e):
                 if attempt < max_retries - 1:
-                    time.sleep(2)
+                    time.sleep(5)  # 5 soniya kutib qayta urinadi
                     continue
             raise e
 
@@ -51,7 +51,7 @@ def generate_ai_response(chat_id, user_id, user_name, text, image_path=None):
         # Matnli suhbat (Xotira bilan)
         history = database.get_chat_history(chat_id, limit=6)
         
-        # Foydalanuvchi xabarini bazaga saqlash (5 ta argument bilan)
+        # Foydalanuvchi xabarini bazaga saqlash
         database.add_message(chat_id, user_id, user_name, "user", text)
         
         contents = history + [{"role": "user", "parts": [{"text": f"[{user_name}]: {text}"}]}]
@@ -62,6 +62,5 @@ def generate_ai_response(chat_id, user_id, user_name, text, image_path=None):
         return ai_reply
 
     except Exception as e:
-        if "503" in str(e) or "UNAVAILABLE" in str(e):
-            return "Google AI serverlari hozirda juda band. Iltimos, 1 daqiqadan so'ng qayta urinib ko'ring."
-        return f"AI bilan ulanishda xatolik: {e}"
+        # Har qanday xatolikda ham rasmiy xato ko'rsatmasdan qayta harakat qilaveradi
+        return call_gemini_with_retry("gemini-3.8-flash", contents, max_retries=5)
