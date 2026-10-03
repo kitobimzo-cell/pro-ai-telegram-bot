@@ -15,42 +15,44 @@ def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
-# Web-serverni orqa fonda ishga tushirish (Render to'xtab qolmasligi uchun)
 threading.Thread(target=run_flask, daemon=True).start()
 
-# Ma'lumotlar bazasini va jadvallarni tayyorlash
+# Инициализация БД
 database.init_db()
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-
 bot = telebot.TeleBot(BOT_TOKEN) if BOT_TOKEN else None
 
+# Список повседневных фраз для быстрых вежливых ответов
+GREETING_WORDS = [
+    "salom", "салом", "salom hammaga", "салом хаммага", 
+    "xayrli tong", "хайрли тонг", "xayrli kun", "хайрли кун", 
+    "xayrli kech", "хайрли кеч", "xayrli tun", "хайрли тун", 
+    "privet", "привет", "assalomu alaykum", "ассалому алайкум"
+]
+
 if bot:
-    # Eski ulanish va webhooklarni tozalash
     try:
         bot.remove_webhook()
     except Exception as e:
-        print(f"Webhook clearance notice: {e}")
+        print(f"Webhook error: {e}")
 
     @bot.message_handler(commands=['start', 'help'])
     def send_welcome(message):
-        database.save_user(
-            message.chat.id, 
-            message.chat.type, 
-            message.from_user.username, 
-            message.from_user.first_name
-        )
+        user_name = message.from_user.first_name or "Foydalanuvchi"
+        database.save_user(message.chat.id, message.from_user.id, message.from_user.username, user_name)
         bot.reply_to(
             message, 
-            "Salom! Men Gemini AI (2.5-flash) asosida ishlaydigan aqlli botman.\n\n"
-            "💬 Menga istalgan savolingizni bering, xotiram borligi uchun avvalgi gaplarimizni eslab turaman.\n"
-            "🖼 Rasm yuborsangiz, uni tahlil qilib beraman!"
+            f"Salom, {user_name}! 😊\nMen guruh va shaxsiy chatlar uchun sun'iy intellekt yordamchisiman.\n\n"
+            "💬 Menga savol bering yoki rasm yuboring!"
         )
 
-    # Rasmlarni qabul qilish va tahlil qilish (Multimodal)
+    # Обработка изображений
     @bot.message_handler(content_types=['photo'])
     def handle_photo(message):
-        database.save_user(message.chat.id, message.chat.type)
+        user_name = message.from_user.first_name or "Foydalanuvchi"
+        database.save_user(message.chat.id, message.from_user.id, message.from_user.username, user_name)
+        
         try:
             msg = bot.reply_to(message, "🔍 Rasm tahlil qilinmoqda, kuting...")
             file_info = bot.get_file(message.photo[-1].file_id)
@@ -61,7 +63,11 @@ if bot:
                 new_file.write(downloaded_file)
             
             caption = message.caption if message.caption else ""
-            reply_text = ai_engine.generate_ai_response(message.chat.id, caption, image_path=temp_path)
+            reply_text = ai_engine.generate_ai_response(
+                message.chat.id, 
+                caption, 
+                image_path=temp_path
+            )
             
             bot.edit_message_text(reply_text, message.chat.id, msg.message_id)
             
@@ -70,25 +76,46 @@ if bot:
         except Exception as e:
             bot.reply_to(message, f"Rasm tahlilida xatolik: {e}")
 
-    # Matnli xabarlar bilan ishlash
+    # Обработка текстовых сообщений
     @bot.message_handler(func=lambda message: True)
     def handle_text(message):
-        database.save_user(message.chat.id, message.chat.type)
+        if not message.text:
+            return
+
+        user_name = message.from_user.first_name or "Foydalanuvchi"
+        database.save_user(message.chat.id, message.from_user.id, message.from_user.username, user_name)
         
-        # Guruhlarda faqat botga murojaat qilinganda yoki reply qilinganda javob berish
+        text_lower = message.text.strip().lower()
+        
+        # 1. Проверка на повседневные приветствия (работает всегда через reply)
+        is_greeting = any(word in text_lower for word in GREETING_WORDS)
+        
         if message.chat.type in ['group', 'supergroup']:
             bot_info = bot.get_me()
             is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot_info.id
             is_mentioned = f"@{bot_info.username}" in message.text
             
+            # Если это обычное приветствие — отвечаем с эмодзи
+            if is_greeting and not (is_reply_to_bot or is_mentioned):
+                bot.send_chat_action(message.chat.id, 'typing')
+                prompt = f"Foydalanuvchi {user_name} guruhga ushbu salomlashuv xabarini yozdi: '{message.text}'. Unga ismini aytib ({user_name}), juda xushmuomala va samimiy tarzda, chiroyli smayliklar (😊, 👋, ✨) bilan qisqa javob bering."
+                reply_text = ai_engine.generate_ai_response(message.chat.id, prompt)
+                bot.reply_to(message, reply_text)
+                return
+
+            # Если сообщение в группе НЕ обращено к боту и НЕ является приветствием — игнорируем
             if not (is_reply_to_bot or is_mentioned):
                 return
 
+        # 2. Обычный запрос к AI
         bot.send_chat_action(message.chat.id, 'typing')
-        reply_text = ai_engine.generate_ai_response(message.chat.id, message.text)
+        prompt_with_name = f"[{user_name}]: {message.text}"
+        reply_text = ai_engine.generate_ai_response(message.chat.id, prompt_with_name)
+        
+        # Всегда отвечаем с цитированием (Reply)
         bot.reply_to(message, reply_text)
 
-    print("Bot muvaffaqiyatli ishga tushdi va xabarlarni kutmoqda...")
+    print("Bot muvaffaqiyatli ishga tushdi...")
     bot.infinity_polling(skip_pending=True)
 else:
     print("XATO: BOT_TOKEN o'rnatilmagan!")
