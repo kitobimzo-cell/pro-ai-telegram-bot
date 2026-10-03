@@ -6,48 +6,50 @@ def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # Suhbatlar xotirasi (Context)
+    # История сообщений с привязкой к пользователю
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS chat_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chat_id INTEGER,
+            user_id INTEGER,
+            user_name TEXT,
             role TEXT,
             content TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     
-    # Foydalanuvchilar va guruhlar ro'yxati
+    # База пользователей
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            chat_id INTEGER PRIMARY KEY,
-            chat_type TEXT,
+            chat_id INTEGER,
+            user_id INTEGER,
             username TEXT,
             first_name TEXT,
-            joined_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            PRIMARY KEY (chat_id, user_id)
         )
     ''')
     
     conn.commit()
     conn.close()
 
-def save_user(chat_id, chat_type, username="", first_name=""):
+def save_user(chat_id, user_id, username="", first_name=""):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT OR REPLACE INTO users (chat_id, chat_type, username, first_name)
+        INSERT OR REPLACE INTO users (chat_id, user_id, username, first_name)
         VALUES (?, ?, ?, ?)
-    ''', (chat_id, chat_type, username, first_name))
+    ''', (chat_id, user_id, username or "", first_name or ""))
     conn.commit()
     conn.close()
 
-def add_message(chat_id, role, content):
+def add_message(chat_id, user_id, user_name, role, content):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO chat_history (chat_id, role, content)
-        VALUES (?, ?, ?)
-    ''', (chat_id, role, content))
+        INSERT INTO chat_history (chat_id, user_id, user_name, role, content)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (chat_id, user_id, user_name, role, content))
     conn.commit()
     conn.close()
 
@@ -55,7 +57,7 @@ def get_chat_history(chat_id, limit=6):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT role, content FROM chat_history 
+        SELECT user_name, role, content FROM chat_history 
         WHERE chat_id = ? 
         ORDER BY id DESC LIMIT ?
     ''', (chat_id, limit))
@@ -63,6 +65,7 @@ def get_chat_history(chat_id, limit=6):
     conn.close()
     
     history = []
-    for role, content in reversed(rows):
-        history.append({"role": role, "parts": [{"text": content}]})
+    for user_name, role, content in reversed(rows):
+        prefix = f"[{user_name}]: " if role == "user" and user_name else ""
+        history.append({"role": role, "parts": [{"text": f"{prefix}{content}"}]})
     return history
