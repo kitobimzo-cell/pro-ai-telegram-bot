@@ -17,13 +17,11 @@ def run_flask():
 
 threading.Thread(target=run_flask, daemon=True).start()
 
-# Инициализация БД
 database.init_db()
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN) if BOT_TOKEN else None
 
-# Список повседневных фраз для быстрых вежливых ответов
 GREETING_WORDS = [
     "salom", "салом", "salom hammaga", "салом хаммага", 
     "xayrli tong", "хайрли тонг", "xayrli kun", "хайрли кун", 
@@ -47,11 +45,12 @@ if bot:
             "💬 Menga savol bering yoki rasm yuboring!"
         )
 
-    # Обработка изображений
+    # Rasmlar bilan ishlash
     @bot.message_handler(content_types=['photo'])
     def handle_photo(message):
         user_name = message.from_user.first_name or "Foydalanuvchi"
-        database.save_user(message.chat.id, message.from_user.id, message.from_user.username, user_name)
+        user_id = message.from_user.id
+        database.save_user(message.chat.id, user_id, message.from_user.username, user_name)
         
         try:
             msg = bot.reply_to(message, "🔍 Rasm tahlil qilinmoqda, kuting...")
@@ -64,7 +63,9 @@ if bot:
             
             caption = message.caption if message.caption else ""
             reply_text = ai_engine.generate_ai_response(
-                message.chat.id, 
+                message.chat.id,
+                user_id,
+                user_name,
                 caption, 
                 image_path=temp_path
             )
@@ -76,18 +77,17 @@ if bot:
         except Exception as e:
             bot.reply_to(message, f"Rasm tahlilida xatolik: {e}")
 
-    # Обработка текстовых сообщений
+    # Matnli xabarlar
     @bot.message_handler(func=lambda message: True)
     def handle_text(message):
         if not message.text:
             return
 
         user_name = message.from_user.first_name or "Foydalanuvchi"
-        database.save_user(message.chat.id, message.from_user.id, message.from_user.username, user_name)
+        user_id = message.from_user.id
+        database.save_user(message.chat.id, user_id, message.from_user.username, user_name)
         
         text_lower = message.text.strip().lower()
-        
-        # 1. Проверка на повседневные приветствия (работает всегда через reply)
         is_greeting = any(word in text_lower for word in GREETING_WORDS)
         
         if message.chat.type in ['group', 'supergroup']:
@@ -95,24 +95,20 @@ if bot:
             is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot_info.id
             is_mentioned = f"@{bot_info.username}" in message.text
             
-            # Если это обычное приветствие — отвечаем с эмодзи
+            # Guruhda oddiy salomlashuv bo'lsa
             if is_greeting and not (is_reply_to_bot or is_mentioned):
                 bot.send_chat_action(message.chat.id, 'typing')
-                prompt = f"Foydalanuvchi {user_name} guruhga ushbu salomlashuv xabarini yozdi: '{message.text}'. Unga ismini aytib ({user_name}), juda xushmuomala va samimiy tarzda, chiroyli smayliklar (😊, 👋, ✨) bilan qisqa javob bering."
-                reply_text = ai_engine.generate_ai_response(message.chat.id, prompt)
+                prompt = f"Foydalanuvchi guruhga ushbu xabarni yozdi: '{message.text}'. Unga ismini aytib ({user_name}), juda xushmuomala va samimiy tarzda, chiroyli smayliklar (😊, 👋, ✨) bilan qisqa javob bering."
+                reply_text = ai_engine.generate_ai_response(message.chat.id, user_id, user_name, prompt)
                 bot.reply_to(message, reply_text)
                 return
 
-            # Если сообщение в группе НЕ обращено к боту и НЕ является приветствием — игнорируем
             if not (is_reply_to_bot or is_mentioned):
                 return
 
-        # 2. Обычный запрос к AI
         bot.send_chat_action(message.chat.id, 'typing')
-        prompt_with_name = f"[{user_name}]: {message.text}"
-        reply_text = ai_engine.generate_ai_response(message.chat.id, prompt_with_name)
+        reply_text = ai_engine.generate_ai_response(message.chat.id, user_id, user_name, message.text)
         
-        # Всегда отвечаем с цитированием (Reply)
         bot.reply_to(message, reply_text)
 
     print("Bot muvaffaqiyatli ishga tushdi...")
