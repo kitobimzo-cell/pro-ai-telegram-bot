@@ -38,7 +38,7 @@ def generate_ai_response(chat_id, text, image_path=None):
         database.add_message(chat_id, "user", text)
         
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             contents=history + [{"role": "user", "parts": [{"text": text}]}],
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_INSTRUCTION
