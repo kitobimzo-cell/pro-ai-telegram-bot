@@ -23,7 +23,8 @@ def get_client():
     if not API_KEYS:
         return None
     key = API_KEYS[current_key_index]
-    return genai.Client(api_key=key)
+    # Timeout o'rnatamiz
+    return genai.Client(api_key=key, http_options={'timeout': 15.0})
 
 def rotate_key():
     global current_key_index
@@ -32,9 +33,11 @@ def rotate_key():
 
 def call_gemini_with_retry(contents):
     model_name = "gemini-3.8-flash"
+    attempts = 0
+    max_total_attempts = len(API_KEYS) * 2 if API_KEYS else 3
     
-    # AI javob bermaguncha keyingi kalitga o'tib cheksiz harakat qiladi
-    while True:
+    while attempts < max_total_attempts:
+        attempts += 1
         client = get_client()
         if not client:
             return "Xato: GEMINI_API_KEY o'rnatilmagan!"
@@ -50,12 +53,11 @@ def call_gemini_with_retry(contents):
             if response and response.text:
                 return response.text
         except Exception as e:
-            err_str = str(e)
-            print(f"API Error (Key {current_key_index+1}): {err_str[:100]}")
-            
-            # Keyingi kalitga o'tamiz va 1.5 soniya kutib qayta urinamiz
+            print(f"API Error (Key index {current_key_index}): {str(e)[:100]}")
             rotate_key()
-            time.sleep(1.5)
+            time.sleep(1)
+            
+    return "Hozirda barcha API kalitlarda yuklama yuqori. Birozdan so'ng qayta yozing."
 
 def generate_ai_response(chat_id, user_id, user_name, text, image_path=None):
     if not API_KEYS:
@@ -78,6 +80,4 @@ def generate_ai_response(chat_id, user_id, user_name, text, image_path=None):
 
     except Exception as e:
         print(f"General Error: {e}")
-        rotate_key()
-        time.sleep(2)
-        return "Tizimda vaqtinchalik yuklama bor, qayta urinib ko'ring."
+        return "Tizimda vaqtinchalik uzilish bo'ldi, qayta yuboring."
