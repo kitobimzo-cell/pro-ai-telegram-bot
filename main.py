@@ -1,4 +1,5 @@
 import os
+import random
 import threading
 from flask import Flask
 import telebot
@@ -29,6 +30,15 @@ GREETING_WORDS = [
     "privet", "привет", "assalomu alaykum", "ассалому алайкум"
 ]
 
+FAST_GREETINGS = [
+    "Salom, {name}! 😊 Qandaysiz?",
+    "Assalomu alaykum, {name}! ✨",
+    "Salom, {name}! 👋 Sizga qanday yordam bera olaman?",
+    "Salom! Xush kelibsiz, {name}! 😊",
+    "Va alaykum assalom, {name}! 👋",
+    "Salom, {name}! Kuningiz xayrli o'tsin! ✨"
+]
+
 BOT_NAME = "alsafi"
 
 if bot:
@@ -37,21 +47,15 @@ if bot:
     except Exception as e:
         print(f"Webhook error: {e}")
 
-    # /start va /help uchun dinamik va har xil samimiy javob
+    # /start bosilganda zahoti instant javob qaytarish
     @bot.message_handler(commands=['start', 'help'])
     def send_welcome(message):
         user_name = message.from_user.first_name or "Foydalanuvchi"
         user_id = message.from_user.id
         database.save_user(message.chat.id, user_id, message.from_user.username, user_name)
         
-        bot.send_chat_action(message.chat.id, 'typing')
-        prompt = (
-            f"Foydalanuvchi '{user_name}' botga /start bosdi. Unga ismini aytib, "
-            f"juda qisqa (1-2 juft so'z), har safar har xil va samimiy, chiroyli smaylik bilan "
-            f"salom bering. Hech qanday uzun shablon yoki takliflar ishlatmang."
-        )
-        welcome_text = ai_engine.generate_ai_response(message.chat.id, user_id, user_name, prompt)
-        bot.reply_to(message, welcome_text)
+        reply_text = random.choice(FAST_GREETINGS).format(name=user_name)
+        bot.reply_to(message, reply_text)
 
     # Rasmlar bilan ishlash
     @bot.message_handler(content_types=['photo'])
@@ -104,11 +108,9 @@ if bot:
             is_mentioned = f"@{bot_info.username}" in message.text
             is_named = BOT_NAME in text_lower
             
-            # Guruhda oddiy salomlashuv bo'lsa
+            # Guruhda oddiy salomlashuv bo'lsa - tezkor tayyor javob
             if is_greeting and not (is_reply_to_bot or is_mentioned or is_named):
-                bot.send_chat_action(message.chat.id, 'typing')
-                prompt = f"Foydalanuvchi guruhga ushbu xabarni yozdi: '{message.text}'. Unga ismini aytib ({user_name}), juda xushmuomala va samimiy tarzda, chiroyli smayliklar (😊, 👋, ✨) bilan qisqa javob bering."
-                reply_text = ai_engine.generate_ai_response(message.chat.id, user_id, user_name, prompt)
+                reply_text = random.choice(FAST_GREETINGS).format(name=user_name)
                 bot.reply_to(message, reply_text)
                 return
 
