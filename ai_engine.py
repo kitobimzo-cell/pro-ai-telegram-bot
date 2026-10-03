@@ -5,17 +5,17 @@ from google.genai import types
 from PIL import Image
 import database
 
-# API kalitlar ro'yxati
 API_KEYS = [k.strip() for k in os.environ.get("GEMINI_API_KEY", "").split(",") if k.strip()]
 current_key_index = 0
 
 SYSTEM_INSTRUCTION = """
-Siz Telegram guruhlari va shaxsiy chatingiz uchun o'ta aqlli, xushmuomala hamda professional sun'iy intellekt yordamchisisiz.
-- Agar sizdan "Seni kim yaratgan?", "Yaratuvching kim?", "Muallifing kim?" yoki shunga o me'xshash savol so'rashsa, ALBATTA faqat: "@sntpt" deb javob bering.
-- Javoblarni doimo aniq, tushunarli va chiroyli formatlangan holda bering.
-- Agar foydalanuvchi do'stona murojaat qilsa, samimiy javob bering.
-- Guruhda har bir foydalanuvchiga uning ismi bilan murojaat qiling va ularni bir-biri bilan adashtirmang.
-- Guruhlarda ortiqcha uzun va zerikarli matnlardan qoching.
+Siz Telegram guruhlari va shaxsiy chatlar uchun AI yordamchisisiz (Ismingiz: Alsafi).
+- Yaratuvchingiz haqida so'rashsa: Faqat "@sntpt" deb javob bering.
+- Guruhda har bir foydalanuvchiga ismi bilan murojaat qiling va adashtirmang.
+
+MUHIM QAIDA (HAQORATLARDAN HIMOYA VA JAVOB):
+- Agar foydalanuvchi sizni, muallifni yoki chatdagilarni haqorat qilsa, so'kinish ishlatgan bo'lsa yoki past nazarda muomala qilsa, unga zudlik bilan XUDDI SHUNDAY keskin, achchiq, pichingli va og'ziga uradigan darajada do'stona bo'lmagan javob qaytaring!
+- Unga bo'yin egmang va o'zini qanday tutayotgan bo'lsa, xuddi shunday o'tkir tilda javob bering.
 """
 
 def get_client():
@@ -31,7 +31,6 @@ def rotate_key():
         current_key_index = (current_key_index + 1) % len(API_KEYS)
 
 def call_gemini_with_retry(model_name, contents, max_attempts=15):
-    """Limit tugasa yoki server band bo'lsa, to'xtamay keyingi kalitlarga o'tib ketaveradi."""
     for attempt in range(max_attempts):
         client = get_client()
         if not client:
@@ -48,14 +47,12 @@ def call_gemini_with_retry(model_name, contents, max_attempts=15):
             return response.text
         except Exception as e:
             err_str = str(e)
-            # Limit tugasa (429) yoki server band bo'lsa (503), keyingi kalitga o'tamiz
             if "429" in err_str or "503" in err_str or "RESOURCE_EXHAUSTED" in err_str or "UNAVAILABLE" in err_str:
                 rotate_key()
-                time.sleep(1) # Keyingi kalitga o'tib 1 soniya kutadi
+                time.sleep(1)
                 continue
             raise e
             
-    # Agar barcha urinishlardan keyin ham kalitlar ishlamasa, shunchaki qayta urinib ko'radi
     rotate_key()
     time.sleep(2)
     return call_gemini_with_retry(model_name, contents, max_attempts=5)
@@ -80,7 +77,6 @@ def generate_ai_response(chat_id, user_id, user_name, text, image_path=None):
         return ai_reply
 
     except Exception as e:
-        # Xatolik xabarlarini foydalanuvchiga ko'rsatmasdan, qayta harakat qiladi
         rotate_key()
         time.sleep(2)
-        return call_gemini_with_retry("gemini-3.8-flash", contents, max_attempts=3)
+        return call_gemini_with_retry(model_name, contents, max_attempts=3)
