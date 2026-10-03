@@ -30,7 +30,7 @@ def rotate_key():
     if len(API_KEYS) > 1:
         current_key_index = (current_key_index + 1) % len(API_KEYS)
 
-def call_gemini_with_retry(model_name, contents, max_attempts=15):
+def call_gemini_with_retry(model_name, contents, max_attempts=5):
     for attempt in range(max_attempts):
         client = get_client()
         if not client:
@@ -46,16 +46,15 @@ def call_gemini_with_retry(model_name, contents, max_attempts=15):
             )
             return response.text
         except Exception as e:
+            print(f"API Error (Attempt {attempt+1}): {e}")
             err_str = str(e)
             if "429" in err_str or "503" in err_str or "RESOURCE_EXHAUSTED" in err_str or "UNAVAILABLE" in err_str:
                 rotate_key()
                 time.sleep(1)
                 continue
-            raise e
+            break
             
-    rotate_key()
-    time.sleep(2)
-    return call_gemini_with_retry(model_name, contents, max_attempts=5)
+    return "Hozirda AI serveriga ulanishda qiyinchilik bo'lyapti. Birozdan so'ng qayta urinib ko'ring."
 
 def generate_ai_response(chat_id, user_id, user_name, text, image_path=None):
     if not API_KEYS:
@@ -77,6 +76,5 @@ def generate_ai_response(chat_id, user_id, user_name, text, image_path=None):
         return ai_reply
 
     except Exception as e:
-        rotate_key()
-        time.sleep(2)
-        return call_gemini_with_retry(model_name, contents, max_attempts=3)
+        print(f"General Error: {e}")
+        return "Tizimda kichik uzilish yuz berdi. Iltimos qayta yozing."
