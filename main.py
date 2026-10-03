@@ -29,6 +29,9 @@ GREETING_WORDS = [
     "privet", "привет", "assalomu alaykum", "ассалому алайкум"
 ]
 
+# Botning nomi
+BOT_NAME = "alsafi"
+
 if bot:
     try:
         bot.remove_webhook()
@@ -41,7 +44,7 @@ if bot:
         database.save_user(message.chat.id, message.from_user.id, message.from_user.username, user_name)
         bot.reply_to(
             message, 
-            f"Salom, {user_name}! 😊\nMen guruh va shaxsiy chatlar uchun sun'iy intellekt yordamchisiman.\n\n"
+            f"Salom, {user_name}! 😊\nMen **Alsafi** - guruh va shaxsiy chatlar uchun sun'iy intellekt yordamchisiman.\n\n"
             "💬 Menga savol bering yoki rasm yuboring!"
         )
 
@@ -94,16 +97,18 @@ if bot:
             bot_info = bot.get_me()
             is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot_info.id
             is_mentioned = f"@{bot_info.username}" in message.text
+            is_named = BOT_NAME in text_lower  # "Alsafi" ismi yozilganligini tekshirish
             
             # Guruhda oddiy salomlashuv bo'lsa
-            if is_greeting and not (is_reply_to_bot or is_mentioned):
+            if is_greeting and not (is_reply_to_bot or is_mentioned or is_named):
                 bot.send_chat_action(message.chat.id, 'typing')
                 prompt = f"Foydalanuvchi guruhga ushbu xabarni yozdi: '{message.text}'. Unga ismini aytib ({user_name}), juda xushmuomala va samimiy tarzda, chiroyli smayliklar (😊, 👋, ✨) bilan qisqa javob bering."
                 reply_text = ai_engine.generate_ai_response(message.chat.id, user_id, user_name, prompt)
                 bot.reply_to(message, reply_text)
                 return
 
-            if not (is_reply_to_bot or is_mentioned):
+            # Agar reply qilinmagan, @mention qilinmagan va "Alsafi" deb ham yozilmagan bo'lsa — e'tiborsiz qoldirish
+            if not (is_reply_to_bot or is_mentioned or is_named):
                 return
 
         bot.send_chat_action(message.chat.id, 'typing')
