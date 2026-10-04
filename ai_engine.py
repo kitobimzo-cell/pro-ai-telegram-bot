@@ -5,7 +5,6 @@ from google.genai import types
 from PIL import Image
 import database
 
-# API kalitlarni Environment Variables'dan yuklab olamiz
 API_KEYS = [k.strip() for k in os.environ.get("GEMINI_API_KEY", "").split(",") if k.strip()]
 current_key_index = 0
 
@@ -20,7 +19,6 @@ MUHIM QOIDA (HAQORATLARDAN HIMOYA VA JAVOB):
 """
 
 def get_client():
-    """Hozirgi aktiv API kalit bilan mijoz yaratadi"""
     global current_key_index
     if not API_KEYS:
         return None
@@ -28,24 +26,18 @@ def get_client():
     return genai.Client(api_key=key, http_options={'timeout': 15.0})
 
 def rotate_key():
-    """Avtomatik ravishda keyingi API kalitga o'tadi"""
     global current_key_index
     if len(API_KEYS) > 1:
         current_key_index = (current_key_index + 1) % len(API_KEYS)
-        print(f"🔄 API Kalit almashdi! Yangi kalit indeksi: {current_key_index + 1}/{len(API_KEYS)}")
 
 def call_gemini_with_retry(contents):
-    """
-    Limit (429) yoki xatolik bo'lsa, avtomatik keyingi API kalitga o'tib
-    ishlaydigan javob olguncha qayta urinadi.
-    """
     model_name = "gemini-3.8-flash"
     max_attempts = len(API_KEYS) * 2 if API_KEYS else 3
     
     for attempt in range(max_attempts):
         client = get_client()
         if not client:
-            return "Xato: GEMINI_API_KEY Environment Variables'da topilmadi!"
+            return None
         
         try:
             response = client.models.generate_content(
@@ -59,25 +51,15 @@ def call_gemini_with_retry(contents):
                 return response.text
                 
         except Exception as e:
-            err_msg = str(e)
-            print(f"⚠️ Xatolik yuz berdi (Kalit {current_key_index + 1}): {err_msg[:120]}")
-            
-            # API limit tugaganini ko'rsatuvchi kalit so'zlar
-            limit_errors = ["429", "RESOURCE_EXHAUSTED", "QUOTA_EXCEEDED", "UNAVAILABLE", "503", "API_KEY_INVALID"]
-            
-            if any(err_code in err_msg for err_code in limit_errors):
-                rotate_key()  # Limit tugagani uchun keyingi kalitga o'tamiz
-                time.sleep(0.5)  # Kichik kutilma bilan darhol qayta harakat qiladi
-            else:
-                # Boshqa kutilmagan xatolik bo'lsa ham kalitni almashtirib ko'ramiz
-                rotate_key()
-                time.sleep(1)
+            print(f"API Error (Key {current_key_index + 1}): {str(e)[:100]}")
+            rotate_key()
+            time.sleep(0.5)
 
-    return "Hozirda barcha API kalitlarda kunlik limit tugagan. Birozdan so'ng qayta yozib ko'ring."
+    return None # Barcha kalitlarda limit tugasa None qaytaradi
 
 def generate_ai_response(chat_id, user_id, user_name, text, image_path=None):
     if not API_KEYS:
-        return "Xato: GEMINI_API_KEY o'rnatilmagan!"
+        return None
     
     try:
         if image_path:
@@ -91,10 +73,11 @@ def generate_ai_response(chat_id, user_id, user_name, text, image_path=None):
         contents = history + [{"role": "user", "parts": [{"text": f"[{user_name}]: {text}"}]}]
         ai_reply = call_gemini_with_retry(contents)
         
-        database.add_message(chat_id, 0, "Bot", "model", ai_reply)
+        if ai_reply:
+            database.add_message(chat_id, 0, "Bot", "model", ai_reply)
         return ai_reply
 
     except Exception as e:
         print(f"General Error: {e}")
         rotate_key()
-        return "Tizimda kichik uzilish bo'ldi. Qayta yuborib ko'ring."
+        return None
