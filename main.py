@@ -57,7 +57,7 @@ if bot:
         reply_text = random.choice(FAST_GREETINGS).format(name=user_name)
         bot.reply_to(message, reply_text)
 
-    # Rasmlar bilan ishlash (Guruh uchun filtr qo'shilgan)
+    # Rasmlar bilan ishlash
     @bot.message_handler(content_types=['photo'])
     def handle_photo(message):
         user_name = message.from_user.first_name or "Foydalanuvchi"
@@ -67,20 +67,17 @@ if bot:
         caption = message.caption if message.caption else ""
         caption_lower = caption.strip().lower()
 
-        # Guruhda bo'lsa, botga taalluqli ekanligini we tekshiramiz
         if message.chat.type in ['group', 'supergroup']:
             bot_info = bot.get_me()
             is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == bot_info.id
             is_mentioned = f"@{bot_info.username.lower()}" in caption_lower
             is_named = BOT_NAME in caption_lower
 
-            # Agar reply qilinmagan va nomi/username'i yozilmagan bo'lsa, e'tiborsiz qoldiramiz
             if not (is_reply_to_bot or is_mentioned or is_named):
                 return
 
         try:
             bot.send_chat_action(message.chat.id, 'typing')
-            msg = bot.reply_to(message, "🔍 Rasm tahlil qilinmoqda, kuting...")
             file_info = bot.get_file(message.photo[-1].file_id)
             downloaded_file = bot.download_file(file_info.file_path)
             
@@ -96,12 +93,13 @@ if bot:
                 image_path=temp_path
             )
             
-            bot.edit_message_text(reply_text, message.chat.id, msg.message_id)
+            if reply_text:
+                bot.reply_to(message, reply_text)
             
             if os.path.exists(temp_path):
                 os.remove(temp_path)
         except Exception as e:
-            bot.reply_to(message, f"Rasm tahlilida xatolik: {e}")
+            print(f"Photo handle error: {e}")
 
     # Matnli xabarlar
     @bot.message_handler(func=lambda message: True)
@@ -122,7 +120,6 @@ if bot:
             is_mentioned = f"@{bot_info.username.lower()}" in text_lower
             is_named = BOT_NAME in text_lower
             
-            # Guruhda oddiy salomlashuv bo'lsa
             if is_greeting and not (is_reply_to_bot or is_mentioned or is_named):
                 reply_text = random.choice(FAST_GREETINGS).format(name=user_name)
                 bot.reply_to(message, reply_text)
@@ -134,7 +131,9 @@ if bot:
         bot.send_chat_action(message.chat.id, 'typing')
         reply_text = ai_engine.generate_ai_response(message.chat.id, user_id, user_name, message.text)
         
-        bot.reply_to(message, reply_text)
+        # Agar javob mavjud bo'lsa yozadi, xatolik bo'lsa jim turadi
+        if reply_text:
+            bot.reply_to(message, reply_text)
 
     print("Bot muvaffaqiyatli ishga tushdi...")
     bot.infinity_polling(skip_pending=True)
